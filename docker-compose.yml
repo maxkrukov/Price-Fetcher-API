@@ -1,0 +1,17 @@
+services:
+  crypto-price-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-price-api
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
