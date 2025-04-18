@@ -4,7 +4,13 @@ from dotenv import load_dotenv
 import httpx
 import os
 from time import time
+import logging
 
+# === Logging setup ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# === Environment setup ===
 load_dotenv()
 app = FastAPI()
 
@@ -12,7 +18,9 @@ CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", 300))
 DEFAULT_QUOTE = os.getenv("DEFAULT_QUOTE", "USDT").upper()
 COINGECKO_LIST_TTL = int(os.getenv("COINGECKO_LIST_TTL", 86400))
 FAILURE_TTL_SECONDS = int(os.getenv("FAILURE_TTL", 600))
+INTERMEDIATE_SYMBOL = os.getenv("INTERMEDIATE_SYMBOL", "USDT").upper()
 
+# === Caches ===
 price_cache = {}
 coin_id_cache = {}
 coingecko_coin_list_cache = []
@@ -81,7 +89,7 @@ async def resolve_coingecko_id(client, symbol: str):
             coingecko_coin_list_cache = res.json()
             coingecko_coin_list_last_fetched = now
         except Exception as e:
-            print(f"Failed to fetch CoinGecko coin list: {e}")
+            logger.warning(f"Failed to fetch CoinGecko coin list: {e}")
             return None
 
     for coin in coingecko_coin_list_cache:
@@ -102,7 +110,7 @@ async def get_price_coingecko(client, symbol, quote):
             data = res.json()
             if coin_id in data and vs_currency in data[coin_id]:
                 price = float(data[coin_id][vs_currency])
-                print(f"coingecko price for {symbol}/{quote}: {price} (inverted: False)")
+                logger.info(f"coingecko price for {symbol}/{quote}: {price} (inverted: False)")
                 return {"source": "coingecko", "price": price, "inverted": False}
 
         coin_id_alt = await resolve_coingecko_id(client, quote)
@@ -115,11 +123,11 @@ async def get_price_coingecko(client, symbol, quote):
             if coin_id_alt in data_alt and vs_currency_alt in data_alt[coin_id_alt]:
                 price = float(data_alt[coin_id_alt][vs_currency_alt])
                 if price != 0:
-                    print(f"coingecko price for {symbol}/{quote}: {1 / price} (inverted: True)")
+                    logger.info(f"coingecko price for {symbol}/{quote}: {1 / price} (inverted: True)")
                     return {"source": "coingecko", "price": 1 / price, "inverted": True}
         return None
     except Exception as e:
-        print(f"Coingecko error for {symbol}/{quote}: {e}")
+        logger.warning(f"Coingecko error for {symbol}/{quote}: {e}")
         return None
 
 # === Exchange Fetchers ===
@@ -130,10 +138,10 @@ async def get_price_binance(client, symbol, quote):
         res.raise_for_status()
         data = res.json()
         price = float(data["price"])
-        print(f"binance price for {symbol}/{quote}: {price} (inverted: False)")
+        logger.info(f"binance price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "binance", "price": price, "inverted": False}
     except Exception as e:
-        print(f"Binance error for {symbol}/{quote}: {e}")
+        logger.warning(f"Binance error for {symbol}/{quote}: {e}")
         return None
 
 async def get_price_okx(client, symbol, quote):
@@ -143,10 +151,10 @@ async def get_price_okx(client, symbol, quote):
         res.raise_for_status()
         data = res.json()
         price = float(data["data"][0]["last"])
-        print(f"okx price for {symbol}/{quote}: {price} (inverted: False)")
+        logger.info(f"okx price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "okx", "price": price, "inverted": False}
     except Exception as e:
-        print(f"OKX error for {symbol}/{quote}: {e}")
+        logger.warning(f"OKX error for {symbol}/{quote}: {e}")
         return None
 
 async def get_price_kraken(client, symbol, quote):
@@ -158,10 +166,10 @@ async def get_price_kraken(client, symbol, quote):
         data = res.json()
         result = list(data["result"].values())[0]
         price = float(result["c"][0])
-        print(f"kraken price for {symbol}/{quote}: {price} (inverted: False)")
+        logger.info(f"kraken price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "kraken", "price": price, "inverted": False}
     except Exception as e:
-        print(f"Kraken error for {symbol}/{quote}: {e}")
+        logger.warning(f"Kraken error for {symbol}/{quote}: {e}")
         return None
 
 async def get_price_coinbase(client, symbol, quote):
@@ -171,10 +179,10 @@ async def get_price_coinbase(client, symbol, quote):
         res.raise_for_status()
         data = res.json()
         price = float(data["data"]["amount"])
-        print(f"coinbase price for {symbol}/{quote}: {price} (inverted: False)")
+        logger.info(f"coinbase price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "coinbase", "price": price, "inverted": False}
     except Exception as e:
-        print(f"Coinbase error for {symbol}/{quote}: {e} — trying inverted pair...")
+        logger.warning(f"Coinbase error for {symbol}/{quote}: {e} — trying inverted pair...")
 
     try:
         url = f"https://api.coinbase.com/v2/prices/{quote.upper()}-{symbol.upper()}/spot"
@@ -183,10 +191,10 @@ async def get_price_coinbase(client, symbol, quote):
         data = res.json()
         price = float(data["data"]["amount"])
         if price != 0:
-            print(f"coinbase price for {symbol}/{quote}: {1 / price} (inverted: True)")
+            logger.info(f"coinbase price for {symbol}/{quote}: {1 / price} (inverted: True)")
             return {"source": "coinbase", "price": 1 / price, "inverted": True}
     except Exception as e:
-        print(f"Inverted Coinbase fallback failed for {quote}/{symbol}: {e}")
+        logger.warning(f"Inverted Coinbase fallback failed for {quote}/{symbol}: {e}")
         return None
 
 async def get_price_mexc(client, symbol, quote):
@@ -196,10 +204,10 @@ async def get_price_mexc(client, symbol, quote):
         res.raise_for_status()
         data = res.json()
         price = float(data["price"])
-        print(f"mexc price for {symbol}/{quote}: {price} (inverted: False)")
+        logger.info(f"mexc price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "mexc", "price": price, "inverted": False}
     except Exception as e:
-        print(f"MEXC error for {symbol}/{quote}: {e}")
+        logger.warning(f"MEXC error for {symbol}/{quote}: {e}")
         return None
 
 FETCHERS = {
@@ -213,7 +221,6 @@ FETCHERS = {
 
 SOURCE_PRIORITY = ["binance", "okx", "kraken", "coinbase", "mexc", "coingecko"]
 
-# === New Derived Price Logic ===
 async def get_price_route_internal(client, symbol, quote):
     for src in SOURCE_PRIORITY:
         if src != "coingecko" and not is_failure_cached(src, symbol, quote):
@@ -228,7 +235,8 @@ async def get_price_route_internal(client, symbol, quote):
                 cache_failure(src, symbol, quote)
     return await get_price_coingecko(client, symbol, quote)
 
-async def get_derived_price(client, symbol, quote, intermediate="USDT"):
+async def get_derived_price(client, symbol, quote, intermediate=None):
+    intermediate = (intermediate or INTERMEDIATE_SYMBOL).upper()
     if symbol.upper() == intermediate or quote.upper() == intermediate:
         return None
 
@@ -247,16 +255,24 @@ async def get_derived_price(client, symbol, quote, intermediate="USDT"):
             b = [b_result]
 
     if a and b:
+        expires_in = min(a[0].get("expires_in", CACHE_TTL_SECONDS), b[0].get("expires_in", CACHE_TTL_SECONDS))
         return {
             "source": "derived",
             "price": a[0]["price"] * b[0]["price"],
-            "inverted": False
+            "inverted": False,
+            "expires_in": expires_in
         }
+
     return None
 
-# === Main Endpoint ===
 @app.get("/price")
-async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), query: str = Query(None), source: str = Query(None)):
+async def get_price(
+    token: str = Query(...),
+    quote: str = Query(DEFAULT_QUOTE),
+    query: str = Query(None),
+    source: str = Query(None),
+    intermediate: str = Query(None)
+):
     symbol = token.upper()
     quote = quote.upper()
     source = source.lower() if source else None
@@ -276,7 +292,7 @@ async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), 
             fetcher = FETCHERS[src]
             skip_failure_cache = src == "coingecko"
             if not skip_failure_cache and is_failure_cached(src, symbol, quote):
-                print(f"Skipping {src} for {symbol}/{quote} — still within FAILURE_TTL_SECONDS")
+                logger.info(f"Skipping {src} for {symbol}/{quote} — still within FAILURE_TTL_SECONDS")
                 continue
             try:
                 result = await fetcher(client, symbol, quote)
@@ -290,19 +306,19 @@ async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), 
                     })
                 elif not skip_failure_cache:
                     cache_failure(src, symbol, quote)
-            except Exception as e:
+            except Exception:
                 if not skip_failure_cache:
                     cache_failure(src, symbol, quote)
 
         if not results and not source:
-            derived = await get_derived_price(client, symbol, quote)
+            derived = await get_derived_price(client, symbol, quote, intermediate)
             if derived:
                 set_cache("derived", symbol, quote, derived["price"])
                 results.append({
                     "source": "derived",
                     "price": derived["price"],
                     "inverted": False,
-                    "expires_in": CACHE_TTL_SECONDS
+                    "expires_in": derived.get("expires_in", CACHE_TTL_SECONDS)
                 })
 
     if not results:
