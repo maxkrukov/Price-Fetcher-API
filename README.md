@@ -5,7 +5,8 @@
 ## **1. Overview**
 
 The **Price Fetcher API** provides real-time price data for a wide variety of **cryptocurrencies** and **fiat currencies**.  
-It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken**, **OKX**, **MEXC**, and uses **CoinGecko** as a **fallback source** when needed.
+It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken**, **OKX**, **MEXC**, and uses **CoinGecko** as a **fallback source** when needed.  
+If no direct price is available, the API can also **calculate a derived price** using an intermediate quote (e.g., `BTC → USDT → PLN`).
 
 ### **🔑 Key Features**
 - ✅ **Crypto-to-Fiat Conversion** (e.g., BTC → USD)
@@ -14,6 +15,7 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
 - ✅ **Multi-Exchange Price Comparison**
 - ✅ **Automatic Inversion via CoinGecko**
 - ✅ **Smart Caching** with TTL expiry
+- ✅ **Derived Pricing via Intermediate (e.g., BTC → USDT → PLN)**
 - ✅ **Minimal JSON Output via `query`**
 
 ---
@@ -29,7 +31,7 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
 ### 🔹 **Optional**
 | Parameter | Description |
 |-----------|-------------|
-| `source` | Specific exchange to use (e.g., `binance`, `okx`, `kraken`, `coinbase`, `mexc`, `coingecko`) |
+| `source` | Specific exchange to use (e.g., `binance`, `okx`, `kraken`, `coinbase`, `mexc`, `coingecko`, `derived`[cannot use it as parameter]) |
 | `query`  | Return only a single value from the response:<br>`price`, `source`, `symbol`, `quote`, `inverted`, `expires_in`, `sources` |
 
 ---
@@ -40,12 +42,18 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
 ```json
 {
   "symbol": "BTC",
-  "quote": "USDT",
-  "price": 84390.5,
-  "source": "okx",
+  "quote": "PLN",
+  "price": 345000,
+  "source": "derived",
   "inverted": false,
-  "expires_in": 291.72,
+  "expires_in": 298.77,
   "sources": [
+    {
+      "source": "derived",
+      "price": 345000,
+      "inverted": false,
+      "expires_in": 298.77
+    },
     {
       "source": "binance",
       "price": 84380.49,
@@ -57,24 +65,6 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
       "price": 84390.5,
       "inverted": false,
       "expires_in": 291.72
-    },
-    {
-      "source": "kraken",
-      "price": 84334.5,
-      "inverted": false,
-      "expires_in": 291.72
-    },
-    {
-      "source": "coinbase",
-      "price": 84386.49,
-      "inverted": false,
-      "expires_in": 292.72
-    },
-    {
-      "source": "mexc",
-      "price": 84380.49,
-      "inverted": false,
-      "expires_in": 292.72
     }
   ]
 }
@@ -86,7 +76,7 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
 | `symbol`     | Base token being priced |
 | `quote`      | Currency in which the price is quoted |
 | `price`      | Selected price (typically the highest or prioritized) |
-| `source`     | Exchange providing the selected `price` |
+| `source`     | Exchange providing the selected `price` (`derived` if calculated) |
 | `inverted`   | `true` if reversed pair was used (CoinGecko only) |
 | `expires_in` | Time remaining before cached result expires |
 | `sources`    | List of all source prices with their own TTL and inversion status |
@@ -159,14 +149,15 @@ print(res.json())
 
 ## **8. Supported Sources**
 
-| Source     | Description              |
-|------------|--------------------------|
-| `binance`  | Binance spot market      |
-| `okx`      | OKX spot market          |
-| `kraken`   | Kraken exchange          |
-| `coinbase` | Coinbase spot market     |
-| `mexc`     | MEXC global              |
-| `coingecko`| CoinGecko aggregator — used as fallback only |
+| Source     | Description                             |
+|------------|-----------------------------------------|
+| `binance`  | Binance spot market                     |
+| `okx`      | OKX spot market                         |
+| `kraken`   | Kraken exchange                         |
+| `coinbase` | Coinbase spot market                    |
+| `mexc`     | MEXC global                             |
+| `coingecko`| CoinGecko aggregator — used as fallback |
+| `derived`  | Calculated using intermediate pairs (e.g., `BTC → USDT → PLN`) |
 
 ---
 
@@ -218,3 +209,4 @@ This service is free, but if you'd like to help with hosting or development:
   `0xa9Ce7AD40027a80C2EEf3475CcCc6b0B22f1Ed6D`
 
 Even small contributions help — thank you! 🙏
+

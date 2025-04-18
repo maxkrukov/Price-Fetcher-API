@@ -213,6 +213,48 @@ FETCHERS = {
 
 SOURCE_PRIORITY = ["binance", "okx", "kraken", "coinbase", "mexc", "coingecko"]
 
+# === New Derived Price Logic ===
+async def get_price_route_internal(client, symbol, quote):
+    for src in SOURCE_PRIORITY:
+        if src != "coingecko" and not is_failure_cached(src, symbol, quote):
+            try:
+                fetcher = FETCHERS[src]
+                result = await fetcher(client, symbol, quote)
+                if result:
+                    return result
+                else:
+                    cache_failure(src, symbol, quote)
+            except Exception:
+                cache_failure(src, symbol, quote)
+    return await get_price_coingecko(client, symbol, quote)
+
+async def get_derived_price(client, symbol, quote, intermediate="USDT"):
+    if symbol.upper() == intermediate or quote.upper() == intermediate:
+        return None
+
+    a = get_valid_cache_entries(symbol, intermediate)
+    if not a:
+        a_result = await get_price_route_internal(client, symbol, intermediate)
+        if a_result:
+            set_cache(a_result["source"], symbol, intermediate, a_result["price"], a_result["inverted"])
+            a = [a_result]
+
+    b = get_valid_cache_entries(intermediate, quote)
+    if not b:
+        b_result = await get_price_route_internal(client, intermediate, quote)
+        if b_result:
+            set_cache(b_result["source"], intermediate, quote, b_result["price"], b_result["inverted"])
+            b = [b_result]
+
+    if a and b:
+        return {
+            "source": "derived",
+            "price": a[0]["price"] * b[0]["price"],
+            "inverted": False
+        }
+    return None
+
+# === Main Endpoint ===
 @app.get("/price")
 async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), query: str = Query(None), source: str = Query(None)):
     symbol = token.upper()
@@ -247,21 +289,19 @@ async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), 
                         "expires_in": CACHE_TTL_SECONDS
                     })
                 elif not skip_failure_cache:
-                    print(f"{src} failed for {symbol}/{quote}, ignoring for {FAILURE_TTL_SECONDS} seconds (empty result)")
                     cache_failure(src, symbol, quote)
             except Exception as e:
                 if not skip_failure_cache:
-                    print(f"{src} failed for {symbol}/{quote}, ignoring for {FAILURE_TTL_SECONDS} seconds — {e}")
                     cache_failure(src, symbol, quote)
 
         if not results and not source:
-            result = await get_price_coingecko(client, symbol, quote)
-            if result:
-                set_cache(result["source"], symbol, quote, result["price"], result.get("inverted", False))
+            derived = await get_derived_price(client, symbol, quote)
+            if derived:
+                set_cache("derived", symbol, quote, derived["price"])
                 results.append({
-                    "source": result["source"],
-                    "price": result["price"],
-                    "inverted": result.get("inverted", False),
+                    "source": "derived",
+                    "price": derived["price"],
+                    "inverted": False,
                     "expires_in": CACHE_TTL_SECONDS
                 })
 
