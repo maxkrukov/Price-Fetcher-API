@@ -16,7 +16,7 @@ If no direct price is available, the API can also **calculate a derived price** 
 - ✅ **Automatic Inversion via CoinGecko**
 - ✅ **Smart Caching** with TTL expiry
 - ✅ **Derived Pricing via Intermediate (e.g., BTC → USDT → PLN)**
-- ✅ **Minimal JSON Output via `query`**
+- ✅ **Minimal JSON Output via `fields` parameter**
 
 ---
 
@@ -32,7 +32,8 @@ If no direct price is available, the API can also **calculate a derived price** 
 | Parameter | Description |
 |-----------|-------------|
 | `source` | Specific exchange to use (e.g., `binance`, `okx`, `kraken`, `coinbase`, `mexc`, `coingecko`, `derived`[cannot use it as parameter]) |
-| `query`  | Return only a single value from the response:<br>`price`, `source`, `symbol`, `quote`, `inverted`, `expires_in`, `sources` |
+| `fields` | Return only selected fields from the response. Use comma-separated values like:<br>`price`, `source`, `symbol`, `quote`, `inverted`, `expires_in`, `expires_at`, `sources` |
+| `intermediate` | Specify an intermediate asset to try for derived pricing (e.g., `USDT`) |
 
 ---
 
@@ -41,30 +42,48 @@ If no direct price is available, the API can also **calculate a derived price** 
 ### **Example Full Response**
 ```json
 {
-  "symbol": "BTC",
-  "quote": "PLN",
-  "price": 345000,
-  "source": "derived",
+  "symbol": "ETH",
+  "quote": "USDT",
+  "price": 1600.0,
+  "source": "kraken",
   "inverted": false,
-  "expires_in": 298.77,
+  "expires_in": 299.18226385116577,
+  "expires_at": "2025-04-18T21:47:39.767047",
   "sources": [
     {
-      "source": "derived",
-      "price": 345000,
-      "inverted": false,
-      "expires_in": 298.77
-    },
-    {
       "source": "binance",
-      "price": 84380.49,
+      "price": 1597.49,
       "inverted": false,
-      "expires_in": 290.72
+      "expires_in": 298.5671670436859,
+      "expires_at": "2025-04-18T21:47:39.152017"
     },
     {
       "source": "okx",
-      "price": 84390.5,
+      "price": 1597.69,
       "inverted": false,
-      "expires_in": 291.72
+      "expires_in": 298.8730113506317,
+      "expires_at": "2025-04-18T21:47:39.457880"
+    },
+    {
+      "source": "kraken",
+      "price": 1600.0,
+      "inverted": false,
+      "expires_in": 299.18216705322266,
+      "expires_at": "2025-04-18T21:47:39.767051"
+    },
+    {
+      "source": "coinbase",
+      "price": 1598.025,
+      "inverted": false,
+      "expires_in": 299.4878776073456,
+      "expires_at": "2025-04-18T21:47:40.072777"
+    },
+    {
+      "source": "mexc",
+      "price": 1597.48,
+      "inverted": false,
+      "expires_in": 299.99830055236816,
+      "expires_at": "2025-04-18T21:47:40.583215"
     }
   ]
 }
@@ -78,7 +97,8 @@ If no direct price is available, the API can also **calculate a derived price** 
 | `price`      | Selected price (typically the highest or prioritized) |
 | `source`     | Exchange providing the selected `price` (`derived` if calculated) |
 | `inverted`   | `true` if reversed pair was used (CoinGecko only) |
-| `expires_in` | Time remaining before cached result expires |
+| `expires_in` | Time remaining before cached result expires (in seconds) |
+| `expires_at` | Time when the cached result will expire (ISO timestamp) |
 | `sources`    | List of all source prices with their own TTL and inversion status |
 
 ---
@@ -114,21 +134,15 @@ curl -s "http://localhost:5000/price?token=ETH&quote=USDT&source=binance"
 
 ### ➤ Query just one field (`price`)
 ```bash
-curl -s "http://localhost:5000/price?token=ETH&quote=BTC&query=price"
+curl -s "http://localhost:5000/price?token=ETH&quote=BTC&fields=price"
 ```
-
-### ➤ CoinGecko with automatic inversion
-```bash
-curl -s "http://localhost:5000/price?token=EUR&quote=PLN&source=coingecko"
-```
-
 ---
 
 ## **6. Google Sheets Integration**
 
 Use this in a cell:
 ```excel
-=IMPORTDATA("https://<your-api-url>/price?token=ETH&quote=BTC&query=price")
+=IMPORTDATA("https://<your-api-url>/price?token=ETH&quote=BTC&fields=price")
 ```
 
 ---
@@ -139,7 +153,7 @@ Use this in a cell:
 import requests
 
 url = "http://localhost:5000/price"
-params = {"token": "BTC", "quote": "USDT", "query": "price"}
+params = {"token": "BTC", "quote": "USDT", "fields": "price"}
 
 res = requests.get(url, params=params)
 print(res.json())
