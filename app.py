@@ -2,68 +2,67 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 from dotenv import load_dotenv
 import httpx
-import asyncio
 import os
 from time import time
 
-# === Load environment ===
 load_dotenv()
-
 app = FastAPI()
 
-# === Config ===
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", 300))
 DEFAULT_QUOTE = os.getenv("DEFAULT_QUOTE", "USDT").upper()
 COINGECKO_LIST_TTL = int(os.getenv("COINGECKO_LIST_TTL", 86400))
 FAILURE_TTL_SECONDS = int(os.getenv("FAILURE_TTL", 600))
 
-# === Cache ===
 price_cache = {}
 coin_id_cache = {}
 coingecko_coin_list_cache = []
 coingecko_coin_list_last_fetched = 0
 failure_cache = {}
 
-# === Helpers ===
-def make_cache_key(symbol, quote):
-    return f"{symbol.upper()}-{quote.upper()}"
+# === Cache helpers ===
+def make_source_cache_key(source, symbol, quote):
+    return f"{source.lower()}_{symbol.upper()}_{quote.upper()}"
 
-def get_valid_cache_entries(symbol, quote, ttl_seconds):
-    key = make_cache_key(symbol, quote)
-    all_sources = price_cache.get(key, {})
+def get_valid_cache_entries(symbol, quote):
     now = time()
-    valid_entries = []
-    for source, data in all_sources.items():
-        if now - data["timestamp"] < ttl_seconds:
-            valid_entries.append({
-                "source": source,
-                "price": data["price"],
-                "inverted": data.get("inverted", False),
-                "expires_in": ttl_seconds - (now - data["timestamp"])
-            })
-    return valid_entries
+    entries = []
+    for src in SOURCE_PRIORITY:
+        key = make_source_cache_key(src, symbol, quote)
+        if key in price_cache:
+            data = price_cache[key]
+            age = now - data["timestamp"]
+            if age < CACHE_TTL_SECONDS:
+                entries.append({
+                    "source": src,
+                    "price": data["price"],
+                    "inverted": bool(data.get("inverted", False)),
+                    "expires_in": round(CACHE_TTL_SECONDS - age, 2)
+                })
+    return entries
 
-def set_cache(symbol, quote, price, source, inverted=False):
-    key = make_cache_key(symbol, quote)
-    if key not in price_cache:
-        price_cache[key] = {}
-    price_cache[key][source] = {
+def set_cache(source, symbol, quote, price, inverted=False):
+    key = make_source_cache_key(source, symbol, quote)
+    price_cache[key] = {
         "price": price,
-        "inverted": inverted,
+        "inverted": bool(inverted),
         "timestamp": int(time())
     }
 
-def normalize_quote_for_coingecko(quote):
-    return "usd" if quote.upper() in {"USDT", "USDC"} else quote.lower()
+# === Failure cache helpers ===
+def make_failure_cache_key(source, symbol, quote):
+    return f"{source.lower()}_{symbol.upper()}_{quote.upper()}"
 
-def is_failure_cached(symbol, quote, source):
-    key = f"{make_cache_key(symbol, quote)}:{source}"
+def is_failure_cached(source, symbol, quote):
+    key = make_failure_cache_key(source, symbol, quote)
     entry = failure_cache.get(key)
     return entry and (time() - entry) < FAILURE_TTL_SECONDS
 
-def cache_failure(symbol, quote, source):
-    key = f"{make_cache_key(symbol, quote)}:{source}"
+def cache_failure(source, symbol, quote):
+    key = make_failure_cache_key(source, symbol, quote)
     failure_cache[key] = time()
+
+def normalize_quote_for_coingecko(quote):
+    return "usd" if quote.upper() in {"USDT", "USDC"} else quote.lower()
 
 # === CoinGecko ===
 async def resolve_coingecko_id(client, symbol: str):
@@ -73,12 +72,10 @@ async def resolve_coingecko_id(client, symbol: str):
     now = time()
 
     if symbol in coin_id_cache:
-        print(f"Found {symbol} in cache!")
         return coin_id_cache[symbol]
 
     if not coingecko_coin_list_cache or now - coingecko_coin_list_last_fetched > COINGECKO_LIST_TTL:
         try:
-            print("Fetching CoinGecko list...")
             res = await client.get("https://api.coingecko.com/api/v3/coins/list")
             res.raise_for_status()
             coingecko_coin_list_cache = res.json()
@@ -89,11 +86,9 @@ async def resolve_coingecko_id(client, symbol: str):
 
     for coin in coingecko_coin_list_cache:
         if coin["symbol"].lower() == symbol:
-            print(f"Matched {symbol} to CoinGecko ID: {coin['id']}")
             coin_id_cache[symbol] = coin["id"]
             return coin["id"]
 
-    print(f"No match found for {symbol} in CoinGecko")
     return None
 
 async def get_price_coingecko(client, symbol, quote):
@@ -106,11 +101,9 @@ async def get_price_coingecko(client, symbol, quote):
             res.raise_for_status()
             data = res.json()
             if coin_id in data and vs_currency in data[coin_id]:
-                return {
-                    "source": "coingecko",
-                    "price": float(data[coin_id][vs_currency]),
-                    "inverted": False
-                }
+                price = float(data[coin_id][vs_currency])
+                print(f"coingecko price for {symbol}/{quote}: {price} (inverted: False)")
+                return {"source": "coingecko", "price": price, "inverted": False}
 
         coin_id_alt = await resolve_coingecko_id(client, quote)
         if coin_id_alt:
@@ -122,17 +115,11 @@ async def get_price_coingecko(client, symbol, quote):
             if coin_id_alt in data_alt and vs_currency_alt in data_alt[coin_id_alt]:
                 price = float(data_alt[coin_id_alt][vs_currency_alt])
                 if price != 0:
-                    print(f"Used inverted price for {symbol}/{quote} from {quote}/{symbol}")
-                    return {
-                        "source": "coingecko",
-                        "price": 1 / price,
-                        "inverted": True
-                    }
-
-        print(f"Coingecko failed for both {symbol}/{quote} and fallback {quote}/{symbol}")
+                    print(f"coingecko price for {symbol}/{quote}: {1 / price} (inverted: True)")
+                    return {"source": "coingecko", "price": 1 / price, "inverted": True}
         return None
     except Exception as e:
-        print(f"Coingecko error for {symbol}/{quote} (not cached): {e}")
+        print(f"Coingecko error for {symbol}/{quote}: {e}")
         return None
 
 # === Exchange Fetchers ===
@@ -142,7 +129,9 @@ async def get_price_binance(client, symbol, quote):
         res = await client.get(url)
         res.raise_for_status()
         data = res.json()
-        return {"source": "binance", "price": float(data["price"]), "inverted": False}
+        price = float(data["price"])
+        print(f"binance price for {symbol}/{quote}: {price} (inverted: False)")
+        return {"source": "binance", "price": price, "inverted": False}
     except Exception as e:
         print(f"Binance error for {symbol}/{quote}: {e}")
         return None
@@ -153,7 +142,9 @@ async def get_price_okx(client, symbol, quote):
         res = await client.get(url)
         res.raise_for_status()
         data = res.json()
-        return {"source": "okx", "price": float(data["data"][0]["last"]), "inverted": False}
+        price = float(data["data"][0]["last"])
+        print(f"okx price for {symbol}/{quote}: {price} (inverted: False)")
+        return {"source": "okx", "price": price, "inverted": False}
     except Exception as e:
         print(f"OKX error for {symbol}/{quote}: {e}")
         return None
@@ -167,6 +158,7 @@ async def get_price_kraken(client, symbol, quote):
         data = res.json()
         result = list(data["result"].values())[0]
         price = float(result["c"][0])
+        print(f"kraken price for {symbol}/{quote}: {price} (inverted: False)")
         return {"source": "kraken", "price": price, "inverted": False}
     except Exception as e:
         print(f"Kraken error for {symbol}/{quote}: {e}")
@@ -178,9 +170,23 @@ async def get_price_coinbase(client, symbol, quote):
         res = await client.get(url)
         res.raise_for_status()
         data = res.json()
-        return {"source": "coinbase", "price": float(data["data"]["amount"]), "inverted": False}
+        price = float(data["data"]["amount"])
+        print(f"coinbase price for {symbol}/{quote}: {price} (inverted: False)")
+        return {"source": "coinbase", "price": price, "inverted": False}
     except Exception as e:
-        print(f"Coinbase error for {symbol}/{quote}: {e}")
+        print(f"Coinbase error for {symbol}/{quote}: {e} — trying inverted pair...")
+
+    try:
+        url = f"https://api.coinbase.com/v2/prices/{quote.upper()}-{symbol.upper()}/spot"
+        res = await client.get(url)
+        res.raise_for_status()
+        data = res.json()
+        price = float(data["data"]["amount"])
+        if price != 0:
+            print(f"coinbase price for {symbol}/{quote}: {1 / price} (inverted: True)")
+            return {"source": "coinbase", "price": 1 / price, "inverted": True}
+    except Exception as e:
+        print(f"Inverted Coinbase fallback failed for {quote}/{symbol}: {e}")
         return None
 
 async def get_price_mexc(client, symbol, quote):
@@ -189,12 +195,13 @@ async def get_price_mexc(client, symbol, quote):
         res = await client.get(url)
         res.raise_for_status()
         data = res.json()
-        return {"source": "mexc", "price": float(data["price"]), "inverted": False}
+        price = float(data["price"])
+        print(f"mexc price for {symbol}/{quote}: {price} (inverted: False)")
+        return {"source": "mexc", "price": price, "inverted": False}
     except Exception as e:
         print(f"MEXC error for {symbol}/{quote}: {e}")
         return None
 
-# === Fetcher Registry ===
 FETCHERS = {
     "binance": get_price_binance,
     "okx": get_price_okx,
@@ -204,103 +211,82 @@ FETCHERS = {
     "coingecko": get_price_coingecko,
 }
 
-SOURCE_PRIORITY = [
-    "binance",
-    "okx",
-    "kraken",
-    "coinbase",
-    "mexc",
-    "coingecko",
-]
+SOURCE_PRIORITY = ["binance", "okx", "kraken", "coinbase", "mexc", "coingecko"]
 
-# === Price Endpoint ===
 @app.get("/price")
 async def get_price(token: str = Query(...), quote: str = Query(DEFAULT_QUOTE), query: str = Query(None), source: str = Query(None)):
     symbol = token.upper()
     quote = quote.upper()
+    source = source.lower() if source else None
+
+    results = get_valid_cache_entries(symbol, quote)
+    cached_sources = {entry["source"] for entry in results}
 
     if source:
-        source = source.lower()
         if source not in FETCHERS:
             return PlainTextResponse("Invalid source specified", status_code=400)
-        sources_to_query = [FETCHERS[source]]
+        missing_sources = [source] if source not in cached_sources else []
     else:
-        sources_to_query = [FETCHERS[src] for src in SOURCE_PRIORITY]
-
-    cached = get_valid_cache_entries(symbol, quote, CACHE_TTL_SECONDS)
-    if cached:
-        if source:
-            cached = [entry for entry in cached if entry["source"] == source]
-            if not cached:
-                return PlainTextResponse(f"No data found for {source} on {symbol}/{quote}", status_code=404)
-
-        max_entry = max(cached, key=lambda x: x["price"])
-        result = {
-            "cached": True,
-            "symbol": symbol,
-            "quote": quote,
-            "max_price": max_entry["price"],
-            "max_source": max_entry["source"],
-            "inverted": max_entry.get("inverted", False),
-            "expires_in": max_entry["expires_in"],
-            "sources": cached,
-        }
-        return PlainTextResponse(str(result[query])) if query and query in result else JSONResponse(result)
+        missing_sources = [src for src in SOURCE_PRIORITY if src not in cached_sources and src != "coingecko"]
 
     async with httpx.AsyncClient(timeout=5) as client:
-        results = []
-        for fetcher in sources_to_query:
-            source_name = fetcher.__name__.replace("get_price_", "")
-            skip_failure_cache = source_name == "coingecko"
-
-            if not skip_failure_cache and is_failure_cached(symbol, quote, source_name):
-                print(f"Skipping {source_name} for {symbol}/{quote} — recently failed, will retry after {FAILURE_TTL_SECONDS}s")
+        for src in missing_sources:
+            fetcher = FETCHERS[src]
+            skip_failure_cache = src == "coingecko"
+            if not skip_failure_cache and is_failure_cached(src, symbol, quote):
+                print(f"Skipping {src} for {symbol}/{quote} — still within FAILURE_TTL_SECONDS")
                 continue
-
             try:
                 result = await fetcher(client, symbol, quote)
                 if result:
-                    results.append(result)
+                    set_cache(result["source"], symbol, quote, result["price"], result.get("inverted", False))
+                    results.append({
+                        "source": result["source"],
+                        "price": result["price"],
+                        "inverted": result.get("inverted", False),
+                        "expires_in": CACHE_TTL_SECONDS
+                    })
                 elif not skip_failure_cache:
-                    print(f"Ignoring {source_name} for {symbol}/{quote} — no data returned, caching failure for {FAILURE_TTL_SECONDS}s")
-                    cache_failure(symbol, quote, source_name)
-                else:
-                    print(f"{source_name} returned no data for {symbol}/{quote} (not cached)")
+                    print(f"{src} failed for {symbol}/{quote}, ignoring for {FAILURE_TTL_SECONDS} seconds (empty result)")
+                    cache_failure(src, symbol, quote)
             except Exception as e:
                 if not skip_failure_cache:
-                    print(f"Ignoring {source_name} for {symbol}/{quote} due to error: {e} — caching failure for {FAILURE_TTL_SECONDS}s")
-                    cache_failure(symbol, quote, source_name)
-                else:
-                    print(f"{source_name} error for {symbol}/{quote} (not cached): {e}")
+                    print(f"{src} failed for {symbol}/{quote}, ignoring for {FAILURE_TTL_SECONDS} seconds — {e}")
+                    cache_failure(src, symbol, quote)
 
-    prices = [r for r in results if r]
+        if not results and not source:
+            result = await get_price_coingecko(client, symbol, quote)
+            if result:
+                set_cache(result["source"], symbol, quote, result["price"], result.get("inverted", False))
+                results.append({
+                    "source": result["source"],
+                    "price": result["price"],
+                    "inverted": result.get("inverted", False),
+                    "expires_in": CACHE_TTL_SECONDS
+                })
 
-    if not prices:
+    if not results:
         return PlainTextResponse("0.0", status_code=404)
 
-    for entry in prices:
-        set_cache(symbol, quote, entry["price"], entry["source"], inverted=entry.get("inverted", False))
-
     if source:
-        prices = [entry for entry in prices if entry["source"] == source]
-        if not prices:
+        results = [r for r in results if r["source"] == source]
+        if not results:
             return PlainTextResponse(f"No data found for {source} on {symbol}/{quote}", status_code=404)
 
-    max_entry = max(prices, key=lambda x: x["price"])
-    result = {
-        "cached": False,
+    max_entry = max(results, key=lambda x: x["price"])
+
+    response = {
         "symbol": symbol,
         "quote": quote,
-        "max_price": max_entry["price"],
-        "max_source": max_entry["source"],
+        "price": max_entry["price"],
+        "source": max_entry["source"],
         "inverted": max_entry.get("inverted", False),
-        "expires_in": CACHE_TTL_SECONDS,
-        "sources": prices,
+        "expires_in": max_entry.get("expires_in", CACHE_TTL_SECONDS),
+        "sources": results,
     }
 
-    return PlainTextResponse(str(result[query])) if query and query in result else JSONResponse(result)
+    return PlainTextResponse(str(response[query])) if query and query in response else JSONResponse(response)
 
-# === Health Endpoint ===
 @app.get("/health")
 async def health():
     return {"status": "ok"}

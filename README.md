@@ -1,234 +1,158 @@
-# **Price Fetcher API Documentation**
+# **📘 Price Fetcher API Documentation**
 
 ---
 
 ## **1. Overview**
 
-The **Price Fetcher API** provides real-time price data for a wide array of **cryptocurrencies** and **fiat currencies**.  
-It supports querying for nearly all cryptocurrencies and fiat currencies, including popular assets such as **Bitcoin (BTC)**, **Ethereum (ETH)**, **Tether (USDT)**, **USD**, **EUR**, and many others. Prices are fetched from multiple exchanges, including **Binance**, **Coinbase**, **Kraken**, **OKX**, **MEXC**, and **CoinGecko**, allowing you to compare rates across different platforms.
+The **Price Fetcher API** provides real-time price data for a wide variety of **cryptocurrencies** and **fiat currencies**.  
+It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken**, **OKX**, **MEXC**, and uses **CoinGecko** as a **fallback source** when needed.
 
-### **Key Features:**
-- ✅ **Crypto-to-Fiat Conversion**: e.g., BTC to USD
-- ✅ **Fiat-to-Fiat Conversion**: e.g., PLN to UAH
-- ✅ **Crypto-to-Crypto Conversion**: e.g., ETH to BTC
-- ✅ **Cross-Exchange Comparison**: Compare rates across Binance, Kraken, etc.
-- ✅ **Automatic Inversion (CoinGecko)**: If CoinGecko doesn’t support direct pair, it auto-fetches the reverse and inverts the value.
-- ✅ **Flexible Query Parameters**: Customize response with fields like `max_price`, `expires_in`, and more.
-- ✅ **Cache with Expiry**: Avoids frequent external calls by caching results with TTL.
+### **🔑 Key Features**
+- ✅ **Crypto-to-Fiat Conversion** (e.g., BTC → USD)
+- ✅ **Fiat-to-Fiat Conversion** (e.g., PLN → UAH)
+- ✅ **Crypto-to-Crypto Conversion** (e.g., ETH → BTC)
+- ✅ **Multi-Exchange Price Comparison**
+- ✅ **Automatic Inversion via CoinGecko**
+- ✅ **Smart Caching** with TTL expiry
+- ✅ **Minimal JSON Output via `query`**
 
 ---
 
 ## **2. Query Parameters**
 
-### **Required Parameters**:
+### 🔹 **Required**
 | Parameter | Description | Example |
 |----------|-------------|---------|
-| `token`  | The asset (crypto or fiat) you want the price **of**. | `BTC`, `EUR`, `USDT`, etc. |
-| `quote`  | The currency you want the price **in**. | `USD`, `PLN`, `BTC`, etc. |
+| `token`  | Asset you're pricing (crypto or fiat) | `BTC`, `ETH`, `USD`, etc. |
+| `quote`  | Currency the price is quoted in        | `USD`, `PLN`, `BTC`, etc. |
 
-### **Optional Parameters**:
+### 🔹 **Optional**
 | Parameter | Description |
 |-----------|-------------|
-| `source` | Specific exchange to query: `binance`, `okx`, `kraken`, `coinbase`, `mexc`, `coingecko`. |
-| `query`  | Return only one value from the response:<br>`max_price`, `max_source`, `cached`, `expires_in`, `symbol`, `quote`, `inverted`, `sources`. |
+| `source` | Specific exchange to use (e.g., `binance`, `okx`, `kraken`, `coinbase`, `mexc`, `coingecko`) |
+| `query`  | Return only a single value from the response:<br>`price`, `source`, `symbol`, `quote`, `inverted`, `expires_in`, `sources` |
 
 ---
 
 ## **3. Response Format**
 
-Full JSON response example:
+### **Example Full Response**
 ```json
 {
-  "cached": true,
-  "symbol": "EUR",
-  "quote": "PLN",
-  "max_price": 37.96449560371141,
-  "max_source": "coingecko",
-  "inverted": true,
-  "expires_in": 229.04,
+  "symbol": "BTC",
+  "quote": "USDT",
+  "price": 84390.5,
+  "source": "okx",
+  "inverted": false,
+  "expires_in": 291.72,
   "sources": [
     {
-      "source": "coingecko",
-      "price": 37.96449560371141,
-      "inverted": true,
-      "expires_in": 229.04
+      "source": "binance",
+      "price": 84380.49,
+      "inverted": false,
+      "expires_in": 290.72
+    },
+    {
+      "source": "okx",
+      "price": 84390.5,
+      "inverted": false,
+      "expires_in": 291.72
+    },
+    {
+      "source": "kraken",
+      "price": 84334.5,
+      "inverted": false,
+      "expires_in": 291.72
+    },
+    {
+      "source": "coinbase",
+      "price": 84386.49,
+      "inverted": false,
+      "expires_in": 292.72
+    },
+    {
+      "source": "mexc",
+      "price": 84380.49,
+      "inverted": false,
+      "expires_in": 292.72
     }
   ]
 }
 ```
 
-### **Key Fields:**
-| Field | Description |
-|-------|-------------|
-| `cached` | Whether the result was returned from cache |
-| `symbol` | Token requested |
-| `quote` | Quote currency |
-| `max_price` | Highest price among sources |
-| `max_source` | Source that returned the highest price |
-| `inverted` | `true` if the price was calculated using an inverted pair (CoinGecko only) |
-| `expires_in` | Time left before cache expires |
-| `sources` | List of prices returned from each source, with their metadata |
+### **Response Field Descriptions**
+| Field        | Description |
+|--------------|-------------|
+| `symbol`     | Base token being priced |
+| `quote`      | Currency in which the price is quoted |
+| `price`      | Selected price (typically the highest or prioritized) |
+| `source`     | Exchange providing the selected `price` |
+| `inverted`   | `true` if reversed pair was used (CoinGecko only) |
+| `expires_in` | Time remaining before cached result expires |
+| `sources`    | List of all source prices with their own TTL and inversion status |
 
 ---
 
 ## **4. Supported Currency Pairs**
 
-Examples include, but are not limited to:
-
-### 🔹 **Crypto-to-Fiat**
+### 🔹 Crypto-to-Fiat
 - BTC → USD
 - ETH → EUR
 - USDT → PLN
 
-### 🔹 **Fiat-to-Fiat**
+### 🔹 Fiat-to-Fiat
 - USD → EUR
 - PLN → UAH
 
-### 🔹 **Crypto-to-Crypto**
+### 🔹 Crypto-to-Crypto
 - ETH → BTC
 - USDT → BTC
 
 ---
 
-## **5. Examples**
+## **5. Usage Examples**
 
-### 🔹 Example 1: Basic query
+### ➤ Basic query
 ```bash
 curl -s "http://localhost:5000/price?token=BTC&quote=USDT"
 ```
-**Response:**
-```json
-{
-  "cached": false,
-  "symbol": "BTC",
-  "quote": "USDT",
-  "max_price": 84524.0,
-  "max_source": "okx",
-  "inverted": false,
-  "expires_in": 300,
-  "sources": [
-    {
-      "source": "binance",
-      "price": 84518.86,
-      "inverted": false
-    },
-    {
-      "source": "okx",
-      "price": 84524.0,
-      "inverted": false
-    },
-    {
-      "source": "kraken",
-      "price": 84516.9,
-      "inverted": false
-    },
-    {
-      "source": "coinbase",
-      "price": 84514.53,
-      "inverted": false
-    },
-    {
-      "source": "mexc",
-      "price": 84521.29,
-      "inverted": false
-    },
-    {
-      "source": "coingecko",
-      "price": 0.00003613,
-      "inverted": false
-    }
-  ]
-}
 
-```
-
-### 🔹 Example 2: Specify exchange
+### ➤ Specific source only
 ```bash
 curl -s "http://localhost:5000/price?token=ETH&quote=USDT&source=binance"
 ```
-**Response:**
-```json
-{
-  "cached": false,
-  "symbol": "ETH",
-  "quote": "USDT",
-  "max_price": 1589.98,
-  "max_source": "binance",
-  "inverted": false,
-  "expires_in": 300,
-  "sources": [
-    {
-      "source": "binance",
-      "price": 1589.98,
-      "inverted": false
-    }
-  ]
-}
 
-```
-
-### 🔹 Example 3: Use query param to extract only `max_price`
+### ➤ Query just one field (`price`)
 ```bash
-curl -s "http://localhost:5000/price?token=eth&quote=btc&query=max_price"
+curl -s "http://localhost:5000/price?token=ETH&quote=BTC&query=price"
 ```
 
-**Response:**
-```json
-0.01881
-```
-
-### 🔹 Example 4: CoinGecko with automatic inversion
+### ➤ CoinGecko with automatic inversion
 ```bash
-curl -s "http://localhost:5000/price?token=eur&quote=pln&source=coingecko"
-```
-
-**Response:**
-```json
-{
-  "cached": true,
-  "symbol": "EUR",
-  "quote": "PLN",
-  "max_price": 37.96,
-  "max_source": "coingecko",
-  "inverted": true,
-  "expires_in": 229.04,
-  "sources": [
-    {
-      "source": "coingecko",
-      "price": 37.96,
-      "inverted": true,
-      "expires_in": 229.04
-    }
-  ]
-}
+curl -s "http://localhost:5000/price?token=EUR&quote=PLN&source=coingecko"
 ```
 
 ---
 
 ## **6. Google Sheets Integration**
 
-Use `IMPORTDATA` in any cell:
-
+Use this in a cell:
 ```excel
-=IMPORTDATA("https://<public-url>/price?token=eth&quote=btc&query=max_price")
+=IMPORTDATA("https://<your-api-url>/price?token=ETH&quote=BTC&query=price")
 ```
 
 ---
 
-## **7. Python Example**
+## **7. Python Integration**
 
 ```python
 import requests
 
 url = "http://localhost:5000/price"
-params = {
-    "token": "BTC",
-    "quote": "USDT",
-    "query": "max_price"
-}
+params = {"token": "BTC", "quote": "USDT", "query": "price"}
 
-response = requests.get(url, params=params)
-print(response.json())
+res = requests.get(url, params=params)
+print(res.json())
 ```
 
 ---
@@ -242,61 +166,50 @@ print(response.json())
 | `kraken`   | Kraken exchange          |
 | `coinbase` | Coinbase spot market     |
 | `mexc`     | MEXC global              |
-| `coingecko`| CoinGecko aggregator     |
+| `coingecko`| CoinGecko aggregator — used as fallback only |
 
 ---
 
 ## **9. Error Handling**
 
-### 🔸 Missing required parameters
+### 🔸 Missing parameters
 ```json
 400 Bad Request
-{
-  "detail": "Missing required parameters"
-}
+"Missing required parameters"
 ```
 
 ### 🔸 Invalid source
 ```json
 400 Bad Request
-{
-  "detail": "Invalid source specified"
-}
+"Invalid source specified"
 ```
 
 ### 🔸 No data found
 ```json
 404 Not Found
-{
-  "detail": "No data found for coingecko on USD/EUR"
-}
+"No data found for coingecko on USD/EUR"
 ```
 
 ---
 
-## **10. Running via Docker Compose**
+## **10. Docker Compose Deployment**
 
 ```bash
-# Clone repo
-git clone <repo>
-cd <repo>
-
-# Build and start
+git clone <your-repo-url>
+cd <repo-dir>
 docker compose build
 docker compose up -d
-
-# Stop
+# Shutdown:
 docker compose down
 ```
+
 ---
 
 ## **11. ❤️ Support the Project**
 
-If you find this API useful, consider making a donation to help **cover infrastructure and hosting costs**. Your support directly helps keep the app running smoothly, reliably, and freely accessible for everyone.
+This service is free, but if you'd like to help with hosting or development:
 
-I’m currently setting up dedicated infrastructure to host this service 24/7 — donations will go toward maintaining the servers, API uptime, monitoring, and future scaling.
-
-### 💸 Donation Addresses:
+### 💸 Donation Wallets
 
 - **Solana (SOL)**  
   `GTsL1ZJqHthtdDLSKJt4D6x4a52NoHEG7tMtWeg1kCjK`
@@ -304,4 +217,4 @@ I’m currently setting up dedicated infrastructure to host this service 24/7 �
 - **Ethereum / Polygon (ETH/POL)**  
   `0xa9Ce7AD40027a80C2EEf3475CcCc6b0B22f1Ed6D`
 
-Even small contributions make a big difference 🙏
+Even small contributions help — thank you! 🙏
