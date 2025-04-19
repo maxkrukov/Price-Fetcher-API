@@ -4,7 +4,7 @@
 
 ## **1. Overview**
 
-The **Price Fetcher API** provides real-time price data for a wide variety of **cryptocurrencies** and **fiat currencies**.  
+The **Price Fetcher API** provides real-time price data (based on CACHE_TTL_SECONDS) for a wide variety of **cryptocurrencies** and **fiat currencies**.  
 It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken**, **OKX**, **MEXC**, and uses **CoinGecko** as a **fallback source** when needed.  
 If no direct price is available, the API can also **calculate a derived price** using an intermediate quote (e.g., `BTC → USDT → PLN`).
 
