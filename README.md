@@ -9,13 +9,13 @@ It fetches prices from top exchanges such as **Binance**, **Coinbase**, **Kraken
 If no direct price is available, the API can also **calculate a derived price** using an intermediate quote (e.g., `BTC → USDT → PLN`).
 
 ### **🔑 Key Features**
-- ✅ **Crypto-to-Fiat Conversion** (e.g., BTC → USD)
-- ✅ **Fiat-to-Fiat Conversion** (e.g., PLN → UAH)
-- ✅ **Crypto-to-Crypto Conversion** (e.g., ETH → BTC)
+- ✅ **Crypto-to-Fiat Conversion** (e.g., BTC → USD)  https://price-fetcher.api2fetch.com/price?token=BTC&quote=USD
+- ✅ **Fiat-to-Fiat Conversion** (e.g., PLN → UAH) https://price-fetcher.api2fetch.com/price?token=PLN&quote=UAH
+- ✅ **Crypto-to-Crypto Conversion** (e.g., ETH → BTC)  https://price-fetcher.api2fetch.com/price?token=ETH&quote=BTC
 - ✅ **Multi-Exchange Price Comparison**
 - ✅ **Automatic Inversion via CoinGecko**
 - ✅ **Smart Caching** with TTL expiry
-- ✅ **Derived Pricing via Intermediate (e.g., BTC → USDT → PLN)**
+- ✅ **Derived Pricing via Intermediate (e.g., FIRO → USDT → PLN)**   https://price-fetcher.api2fetch.com/price?token=FIRO&quote=PLN
 - ✅ **Minimal JSON Output via `fields` parameter**
 
 ---
@@ -124,17 +124,17 @@ If no direct price is available, the API can also **calculate a derived price** 
 
 ### ➤ Basic query
 ```bash
-curl -s "http://localhost:5000/price?token=BTC&quote=USDT"
+curl -s "https://price-fetcher.api2fetch.com/price?token=BTC&quote=USDT"
 ```
 
 ### ➤ Specific source only
 ```bash
-curl -s "http://localhost:5000/price?token=ETH&quote=USDT&source=binance"
+curl -s "https://price-fetcher.api2fetch.com/price?token=ETH&quote=USDT&source=binance"
 ```
 
 ### ➤ Query just one field (`price`)
 ```bash
-curl -s "http://localhost:5000/price?token=ETH&quote=BTC&fields=price"
+curl -s "https://price-fetcher.api2fetch.com/price?token=ETH&quote=BTC&fields=price"
 ```
 ---
 
@@ -142,7 +142,7 @@ curl -s "http://localhost:5000/price?token=ETH&quote=BTC&fields=price"
 
 Use this in a cell:
 ```excel
-=IMPORTDATA("https://<your-api-url>/price?token=ETH&quote=BTC&fields=price")
+=IMPORTDATA("https://price-fetcher.api2fetch.com/price?token=ETH&quote=BTC&fields=price")
 ```
 
 ---
@@ -152,7 +152,7 @@ Use this in a cell:
 ```python
 import requests
 
-url = "http://localhost:5000/price"
+url = "https://price-fetcher.api2fetch.com/price"
 params = {"token": "BTC", "quote": "USDT", "fields": "price"}
 
 res = requests.get(url, params=params)
